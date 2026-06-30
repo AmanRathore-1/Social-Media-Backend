@@ -1,5 +1,7 @@
+import mongoose from "mongoose";
 import Comment from "../models/comment.model.js";
 import Post from "../models/post.model.js";
+import { createNotification } from "../services/notification.service.js";
 
 export const createComment = async (req, res) => {
     try {
@@ -7,7 +9,15 @@ export const createComment = async (req, res) => {
         const { postId } = req.params;
         const { text } = req.body;
 
-        if (!text) {
+        // Validate Post ID
+        if (!mongoose.Types.ObjectId.isValid(postId)) {
+            return res.status(400).json({
+                success: false,
+                message: "Invalid Post ID"
+            });
+        }
+
+        if (!text || text.trim() === "") {
             return res.status(400).json({
                 success: false,
                 message: "Comment text is required"
@@ -23,15 +33,26 @@ export const createComment = async (req, res) => {
             });
         }
 
+        // Create Comment
         const comment = await Comment.create({
             post: postId,
             user: req.user._id,
-            text,
+            text: text.trim(),
         });
 
+        // Add comment to post
         post.comments.push(comment._id);
 
         await post.save();
+
+        // Create notification for post owner
+        await createNotification({
+            sender: req.user._id,
+            receiver: post.user,
+            type: "COMMENT",
+            post: post._id,
+            comment: comment._id
+        });
 
         return res.status(201).json({
             success: true,
@@ -48,16 +69,24 @@ export const createComment = async (req, res) => {
 
     }
 };
+
 export const getComments = async (req, res) => {
     try {
 
         const { postId } = req.params;
 
+        if (!mongoose.Types.ObjectId.isValid(postId)) {
+            return res.status(400).json({
+                success: false,
+                message: "Invalid Post ID"
+            });
+        }
+
         const comments = await Comment.find({
             post: postId
         })
-        .populate("user", "name profilePic")
-        .sort({ createdAt: -1 });
+            .populate("user", "name username profilePic isVerified")
+            .sort({ createdAt: -1 });
 
         return res.status(200).json({
             success: true,
@@ -74,13 +103,21 @@ export const getComments = async (req, res) => {
 
     }
 };
+
 export const updateComment = async (req, res) => {
     try {
 
         const { id } = req.params;
         const { text } = req.body;
 
-        if (!text) {
+        if (!mongoose.Types.ObjectId.isValid(id)) {
+            return res.status(400).json({
+                success: false,
+                message: "Invalid Comment ID"
+            });
+        }
+
+        if (!text || text.trim() === "") {
             return res.status(400).json({
                 success: false,
                 message: "Comment text is required"
@@ -96,14 +133,15 @@ export const updateComment = async (req, res) => {
             });
         }
 
-        if (comment.user.toString() !== req.user._id) {
+        // Only owner can update
+        if (comment.user.toString() !== req.user._id.toString()) {
             return res.status(403).json({
                 success: false,
                 message: "You are not authorized to update this comment"
             });
         }
 
-        comment.text = text;
+        comment.text = text.trim();
         comment.isEdited = true;
 
         await comment.save();
@@ -123,10 +161,18 @@ export const updateComment = async (req, res) => {
 
     }
 };
+
 export const deleteComment = async (req, res) => {
     try {
 
         const { id } = req.params;
+
+        if (!mongoose.Types.ObjectId.isValid(id)) {
+            return res.status(400).json({
+                success: false,
+                message: "Invalid Comment ID"
+            });
+        }
 
         const comment = await Comment.findById(id);
 
@@ -138,14 +184,14 @@ export const deleteComment = async (req, res) => {
         }
 
         // Only owner can delete
-        if (comment.user.toString() !== req.user._id) {
+        if (comment.user.toString() !== req.user._id.toString()) {
             return res.status(403).json({
                 success: false,
                 message: "You are not authorized to delete this comment"
             });
         }
 
-        // Remove comment reference from the post
+        // Remove comment reference from post
         await Post.findByIdAndUpdate(
             comment.post,
             {
@@ -155,7 +201,7 @@ export const deleteComment = async (req, res) => {
             }
         );
 
-        // Delete the comment
+        // Delete comment
         await comment.deleteOne();
 
         return res.status(200).json({

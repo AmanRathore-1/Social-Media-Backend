@@ -1,7 +1,7 @@
 import Post from "../models/post.model.js";
 import cloudinary from "../config/cloudinary.js";
 import mongoose from "mongoose";
-
+import {createNotification} from "../services/notification.service.js"
 export const createPost = async (req, res) => {
     try {
 
@@ -340,6 +340,15 @@ export const toggleLike = async (req, res) => {
 
         const { id } = req.params;
 
+        // Validate Post ID
+        if (!mongoose.Types.ObjectId.isValid(id)) {
+            return res.status(400).json({
+                success: false,
+                message: "Invalid Post ID"
+            });
+        }
+
+        // Find Post
         const post = await Post.findById(id);
 
         if (!post) {
@@ -349,30 +358,44 @@ export const toggleLike = async (req, res) => {
             });
         }
 
-        const index = post.likes.findIndex(
-            (userId) => userId.toString() === req.user._id
+        // Check if already liked
+        const alreadyLiked = post.likes.some(
+            (userId) => userId.toString() === req.user._id.toString()
         );
 
-        if (index === -1) {
+        if (!alreadyLiked) {
+
             post.likes.push(req.user._id);
 
             await post.save();
 
+            // Create notification for post owner
+            await createNotification({
+                sender: req.user._id,
+                receiver: post.user,
+                type: "LIKE",
+                post: post._id
+            });
+
             return res.status(200).json({
                 success: true,
                 action: "liked",
+                message: "Post liked successfully",
                 totalLikes: post.likes.length,
                 data: post
             });
         }
 
-        post.likes.splice(index, 1);
+        post.likes = post.likes.filter(
+            (userId) => userId.toString() !== req.user._id.toString()
+        );
 
         await post.save();
 
         return res.status(200).json({
             success: true,
             action: "unliked",
+            message: "Post unliked successfully",
             totalLikes: post.likes.length,
             data: post
         });
