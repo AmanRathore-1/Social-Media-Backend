@@ -1,0 +1,91 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+    <title>Socket Chat Test</title>
+</head>
+
+<body>
+
+<h2>Socket.IO Chat Demo</h2>
+
+<label>Your ID</label><br>
+<input id="myId" placeholder="aman"><br><br>
+
+<label>Receiver ID</label><br>
+<input id="receiver" placeholder="rahul"><br><br>
+
+<button onclick="connect()">Connect</button>
+
+<hr>
+
+<input id="message" placeholder="Type message">
+
+<button onclick="sendMessage()">Send</button>
+
+<h3>Messages</h3>
+
+<div id="messages"></div>
+
+<script src="http://localhost:3000/socket.io/socket.io.js"></script>
+
+<script>
+
+let socket;
+
+function connect(){
+
+    const myId=document.getElementById("myId").value;
+
+    socket=io("http://localhost:3000",{
+
+        query:{
+            userId:myId
+        }
+
+    });
+
+    socket.on("connect",()=>{
+
+        addMessage("Connected");
+
+    });
+
+    socket.on("receiveMessage",(data)=>{
+
+        addMessage(`${data.sender}: ${data.text}`);
+
+    });
+
+}
+
+function sendMessage(){
+
+    const receiver=document.getElementById("receiver").value;
+
+    const text=document.getElementById("message").value;
+
+    socket.emit("sendMessage",{
+
+        receiver,
+        text
+
+    });
+
+    addMessage(`Me: ${text}`);
+
+    document.getElementById("message").value="";
+
+}
+
+function addMessage(msg){
+
+    document.getElementById("messages").innerHTML+=`<p>${msg}</p>`;
+
+}
+
+</script>
+
+</body>
+
+</html>
