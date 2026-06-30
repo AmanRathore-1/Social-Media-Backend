@@ -1,30 +1,43 @@
-import jwt from "jsonwebtoken"
+import jwt from "jsonwebtoken";
+import User from "../models/user.model.js";
 
-export const protect =(req,res,next)=>{
-    try
-   { const authHead=req.headers.authorization;
-    if(!authHead || !authHead.startsWith("Bearer "))
-    {
-        return res.status(401).json({
-            success:false,
-            message:"token not found"
-        });
-    }
+export const protect = async (req, res, next) => {
+    try {
 
-    const token=authHead.split(" ")[1];
+        const authHeader = req.headers.authorization;
 
-    const decoded=jwt.verify(token,process.env.JWT_SECRET);
-        req.user = decoded;
+        if (!authHeader || !authHeader.startsWith("Bearer ")) {
+            return res.status(401).json({
+                success: false,
+                message: "Authorization token not found"
+            });
+        }
 
-        // Continue to the next middleware/controller
+        const token = authHeader.split(" ")[1];
+
+        const decoded = jwt.verify(token, process.env.JWT_SECRET);
+
+        // Get latest user data from database
+        const user = await User.findById(decoded.id).select("-password");
+
+        if (!user) {
+            return res.status(404).json({
+                success: false,
+                message: "User not found"
+            });
+        }
+
+        // Store complete user object
+        req.user = user;
+
         next();
-}
-    catch(error)
-    {
+
+    } catch (error) {
+
         return res.status(401).json({
             success: false,
-            message: "Invalid or expired token",
+            message: "Invalid or expired token"
         });
-    }
 
-}
+    }
+};

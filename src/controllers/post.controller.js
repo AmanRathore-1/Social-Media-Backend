@@ -21,7 +21,7 @@ export const createPost = async (req, res) => {
 
         // Create Post
         const post = await Post.create({
-            user: req.user.id,
+            user: req.user._id,
             caption,
             image: result.secure_url,
         });
@@ -111,7 +111,7 @@ export const updatePost = async (req, res) => {
         }
 
         // Only owner can update
-        if (post.user.toString() !== req.user.id) {
+        if (post.user.toString() !== req.user._id) {
             return res.status(403).json({
                 success: false,
                 message: "You are not authorized to update this post"
@@ -166,7 +166,7 @@ export const deletePost = async (req, res) => {
         }
 
         // Only owner can delete
-        if (post.user.toString() !== req.user.id) {
+        if (post.user.toString() !== req.user._id) {
             return res.status(403).json({
                 success: false,
                 message: "Unauthorized"
@@ -206,7 +206,7 @@ export const getMyPosts = async (req, res) => {
     try {
 
         const posts = await Post.find({
-            user: req.user.id
+            user: req.user._id
         })
         .populate("user", "name profilePic")
         .sort({ createdAt: -1 });
@@ -250,14 +250,14 @@ export const likePost = async (req, res) => {
         }
 
         // Prevent duplicate likes
-        if (post.likes.includes(req.user.id)) {
+        if (post.likes.includes(req.user._id)) {
             return res.status(400).json({
                 success: false,
                 message: "You already liked this post"
             });
         }
 
-        post.likes.push(req.user.id);
+        post.likes.push(req.user._id);
 
         await post.save();
 
@@ -302,7 +302,7 @@ export const unlikePost = async (req, res) => {
 
         // Check if user has liked the post
         const alreadyLiked = post.likes.some(
-            (userId) => userId.toString() === req.user.id
+            (userId) => userId.toString() === req.user._id
         );
 
         if (!alreadyLiked) {
@@ -314,7 +314,7 @@ export const unlikePost = async (req, res) => {
 
         // Remove like
         post.likes = post.likes.filter(
-            (userId) => userId.toString() !== req.user.id
+            (userId) => userId.toString() !== req.user._id
         );
 
         await post.save();
@@ -350,11 +350,11 @@ export const toggleLike = async (req, res) => {
         }
 
         const index = post.likes.findIndex(
-            (userId) => userId.toString() === req.user.id
+            (userId) => userId.toString() === req.user._id
         );
 
         if (index === -1) {
-            post.likes.push(req.user.id);
+            post.likes.push(req.user._id);
 
             await post.save();
 

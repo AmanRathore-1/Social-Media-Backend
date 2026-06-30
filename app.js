@@ -8,6 +8,8 @@ import router from "./src/routes/user.routes.js";
 import postRoutes from "./src/routes/post.routes.js";
 import uploadRoutes  from "./src/routes/upload.routes.js"
 import commentRoutes from "./src/routes/comment.routes.js";
+import followRoutes from "./src/routes/follow.routes.js";
+import notificationRoutes from "./src/routes/notification.routes.js";
 dotenv.config();
 const app=express();
 
@@ -26,8 +28,8 @@ app.use("/api/users",router);
 app.use("/api/upload", uploadRoutes);
 app.use("/api/posts", postRoutes);
 app.use("/api/comments", commentRoutes);
-
-
+app.use("/api/users", followRoutes);
+app.use("/api/notifications", notificationRoutes);
 await connectDb();
 app.listen(PORT,()=>{
     console.log(`Server listening on port ${PORT}`);
