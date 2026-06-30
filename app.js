@@ -5,6 +5,9 @@ import morgan from "morgan";
 import helmet from "helmet";
 import { connectDb } from "./src/config/db.js";
 import router from "./src/routes/user.routes.js";
+import postRoutes from "./src/routes/post.routes.js";
+import uploadRoutes  from "./src/routes/upload.routes.js"
+import commentRoutes from "./src/routes/comment.routes.js";
 dotenv.config();
 const app=express();
 
@@ -20,6 +23,11 @@ app.get("/",(req,res)=>{
     res.send("Social Media Backend API is Running ")
 })
 app.use("/api/users",router);
+app.use("/api/upload", uploadRoutes);
+app.use("/api/posts", postRoutes);
+app.use("/api/comments", commentRoutes);
+
+
 await connectDb();
 app.listen(PORT,()=>{
     console.log(`Server listening on port ${PORT}`);

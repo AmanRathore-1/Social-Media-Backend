@@ -1,86 +1,117 @@
 import User from "../models/user.model.js";
-import bcrypt from "bcrypt"
-export const Signup=async (req,res)=>{
-    try
-    {
-    const {name,email,password}=req.body;
+import bcrypt from "bcrypt";
+export const getProfile = async (req, res) => {
+    try {
+        const token = req.user.id;
 
-    if(!name || !email || !password)
-    {
-        return res.status(400).json({
-            success:false,
-            message:"Data missing"
+        const user = await User.findById(token).select("-password");
+
+        if (!user) {
+            return res.status(404).json({
+                success: false,
+                message: "User not found"
+            });
+        }
+        res.status(200).json({
+            success: true,
+            data: user
         })
     }
 
-    const usermail=await User.findOne({email});
-
-    if(usermail)
-    {
-        return res.status(400).json({
-            success:false,
-            message:"User already exists"
+    catch (error) {
+        return res.status(500).json({
+            success: false,
+            message: error.message
         })
-    }
-    const hashedPassword=await bcrypt.hash(password,10);
-    const user=await User.create({name,email,password:hashedPassword});
-
-    res.status(201).json({
-        success:true,
-        message:"user created",
-        details:user
-    });
-}
-    catch(error)
-    {
-res.status(500).json({
-        success:false,
-        message:error.message,
-    })
     }
 }
+export const updateProfile = async (req, res) => {
+    try {
 
+        const { name, bio } = req.body;
 
-export const login=async (req,res)=>{
-    try{
-        const {email,password}=req.body;
-        if(!email || !password)
-    {
-        return res.status(404).json({
-            success:false,
-            message:"Data missing"
-        })
-    }
+        const user = await User.findById(req.user.id);
 
-    const user=await User.findOne({email}).select("+password");
+        if (!user) {
+            return res.status(404).json({
+                success: false,
+                message: "User not found"
+            });
+        }
 
-    if(!user)
-    {
-        return  res.status(400).json({
-            success:false,
-            message:"no user found with the mail"
-        })
-    }
+        if (name) {
+            user.name = name;
+        }
 
-   const isPasswordMatch = await bcrypt.compare(password, user.password);
-   if(!isPasswordMatch)
-   {
-    return res.status(401).json({
-            success:false,
-            message:"Password invalid"
-        })
-   }
+        if (bio) {
+            user.bio = bio;
+        }
 
-   res.status(200).json({
-     success:true,
-     message:"login successfull",
-     data:user
-   })
-    }catch(error)
-    {
+        await user.save();
+
+        res.status(200).json({
+            success: true,
+            message: "Profile updated successfully",
+            data: user
+        });
+
+    } catch (error) {
+
         res.status(500).json({
-            success:false,
-           message: error.message
-        })
+            success: false,
+            message: error.message
+        });
+
     }
-}
+};
+
+export const changePassword = async (req, res) => {
+    try {
+
+        const { oldPassword, newPassword } = req.body;
+
+        if (!oldPassword || !newPassword) {
+            return res.status(400).json({
+                success: false,
+                message: "Old password and new password are required"
+            });
+        }
+
+        const user = await User.findById(req.user.id).select("+password");
+
+        if (!user) {
+            return res.status(404).json({
+                success: false,
+                message: "User not found"
+            });
+        }
+
+        const isMatch = await bcrypt.compare(oldPassword, user.password);
+
+        if (!isMatch) {
+            return res.status(401).json({
+                success: false,
+                message: "Old password is incorrect"
+            });
+        }
+
+        const hashedPassword = await bcrypt.hash(newPassword, 10);
+
+        user.password = hashedPassword;
+
+        await user.save();
+
+        res.status(200).json({
+            success: true,
+            message: "Password changed successfully"
+        });
+
+    } catch (error) {
+
+        res.status(500).json({
+            success: false,
+            message: error.message
+        });
+
+    }
+};

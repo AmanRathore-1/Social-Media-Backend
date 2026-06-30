@@ -9,5 +9,4 @@ export const connectDb=async ()=>{
       console.log("Mongo db connection failed",error.message);
       process.exit(1);
     }
-    
 }
