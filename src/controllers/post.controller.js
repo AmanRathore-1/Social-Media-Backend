@@ -1,411 +1,372 @@
 import Post from "../models/post.model.js";
 import cloudinary from "../config/cloudinary.js";
 import mongoose from "mongoose";
-import {createNotification} from "../services/notification.service.js"
-export const createPost = async (req, res) => {
-    try {
+import { createNotification } from "../services/notification.service.js";
+import asyncHandler from "../utils/asyncHandler.js";
+import ApiError from "../utils/ApiError.js";
+import ApiResponse from "../utils/ApiResponse.js";
 
-        const { caption } = req.body;
+// =========================
+// Create Post
+// =========================
+export const createPost = asyncHandler(async (req, res) => {
 
-        if (!req.file) {
-            return res.status(400).json({
-                success: false,
-                message: "Please upload an image"
-            });
-        }
+    const { caption } = req.body;
 
-        // Upload image to Cloudinary
+    if (!req.file) {
+        throw new ApiError(400, "Please upload an image");
+    }
+
+    const result = await cloudinary.uploader.upload(req.file.path, {
+        folder: "social-media-app/posts",
+    });
+
+    const post = await Post.create({
+        user: req.user._id,
+        caption,
+        image: result.secure_url,
+    });
+
+    return res.status(201).json(
+        new ApiResponse(
+            201,
+            post,
+            "Post created successfully"
+        )
+    );
+
+});
+
+// =========================
+// Get All Posts
+// =========================
+export const getAllPosts = asyncHandler(async (req, res) => {
+
+    const posts = await Post.find()
+        .populate("user", "name profilePic")
+        .sort({ createdAt: -1 });
+
+    return res.status(200).json(
+        new ApiResponse(
+            200,
+            {
+                count: posts.length,
+                posts,
+            },
+            "Posts fetched successfully"
+        )
+    );
+
+});
+
+// =========================
+// Get Post By Id
+// =========================
+export const getPostById = asyncHandler(async (req, res) => {
+
+    const { id } = req.params;
+
+    if (!mongoose.Types.ObjectId.isValid(id)) {
+        throw new ApiError(400, "Invalid Post ID");
+    }
+
+    const post = await Post.findById(id)
+        .populate("user", "name profilePic")
+        .populate("comments");
+
+    if (!post) {
+        throw new ApiError(404, "Post not found");
+    }
+
+    return res.status(200).json(
+        new ApiResponse(
+            200,
+            post,
+            "Post fetched successfully"
+        )
+    );
+
+});
+
+// =========================
+// Update Post
+// =========================
+export const updatePost = asyncHandler(async (req, res) => {
+
+    const { id } = req.params;
+    const { caption } = req.body;
+
+    if (!mongoose.Types.ObjectId.isValid(id)) {
+        throw new ApiError(400, "Invalid Post ID");
+    }
+
+    const post = await Post.findById(id);
+
+    if (!post) {
+        throw new ApiError(404, "Post not found");
+    }
+
+    if (post.user.toString() !== req.user._id.toString()) {
+        throw new ApiError(
+            403,
+            "You are not authorized to update this post"
+        );
+    }
+
+    if (caption) {
+        post.caption = caption;
+    }
+
+    if (req.file) {
+
         const result = await cloudinary.uploader.upload(req.file.path, {
             folder: "social-media-app/posts",
         });
 
-        // Create Post
-        const post = await Post.create({
-            user: req.user._id,
-            caption,
-            image: result.secure_url,
-        });
-
-        return res.status(201).json({
-            success: true,
-            message: "Post created successfully",
-            data: post,
-        });
-
-    } catch (error) {
-
-        return res.status(500).json({
-            success: false,
-            message: error.message,
-        });
-
+        post.image = result.secure_url;
     }
-};
 
-export const getAllPosts = async (req, res) => {
-    try {
+    await post.save();
 
-        const posts = await Post.find()
-            .populate("user", "name profilePic")
-            .sort({ createdAt: -1 });
+    return res.status(200).json(
+        new ApiResponse(
+            200,
+            post,
+            "Post updated successfully"
+        )
+    );
 
-        res.status(200).json({
-            success: true,
-            count: posts.length,
-            data: posts
-        });
+});
 
-    } catch (error) {
+// =========================
+// Delete Post
+// =========================
+export const deletePost = asyncHandler(async (req, res) => {
 
-        res.status(500).json({
-            success: false,
-            message: error.message
-        });
+    const { id } = req.params;
 
+    if (!mongoose.Types.ObjectId.isValid(id)) {
+        throw new ApiError(400, "Invalid Post ID");
     }
-};
 
-export const getPostById = async (req, res) => {
-    try {
+    const post = await Post.findById(id);
 
-        const { id } = req.params;
-
-        const post = await Post.findById(id)
-            .populate("user", "name profilePic")
-            .populate("comments");
-
-        if (!post) {
-            return res.status(404).json({
-                success: false,
-                message: "Post not found"
-            });
-        }
-
-        return res.status(200).json({
-            success: true,
-            data: post
-        });
-
-    } catch (error) {
-
-        return res.status(500).json({
-            success: false,
-            message: error.message
-        });
-
+    if (!post) {
+        throw new ApiError(404, "Post not found");
     }
-};
-export const updatePost = async (req, res) => {
-    try {
 
-        const { id } = req.params;
-        const { caption } = req.body;
-
-        const post = await Post.findById(id);
-
-        if (!post) {
-            return res.status(404).json({
-                success: false,
-                message: "Post not found"
-            });
-        }
-
-        // Only owner can update
-        if (post.user.toString() !== req.user._id) {
-            return res.status(403).json({
-                success: false,
-                message: "You are not authorized to update this post"
-            });
-        }
-
-        // Update caption
-        if (caption) {
-            post.caption = caption;
-        }
-
-        // Update image (optional)
-        if (req.file) {
-
-            const result = await cloudinary.uploader.upload(req.file.path, {
-                folder: "social-media-app/posts",
-            });
-
-            post.image = result.secure_url;
-        }
-
-        await post.save();
-
-        return res.status(200).json({
-            success: true,
-            message: "Post updated successfully",
-            data: post,
-        });
-
-    } catch (error) {
-
-        return res.status(500).json({
-            success: false,
-            message: error.message,
-        });
-
+    if (post.user.toString() !== req.user._id.toString()) {
+        throw new ApiError(403, "Unauthorized");
     }
-};
 
-export const deletePost = async (req, res) => {
-    try {
+    // Delete image from Cloudinary
+    const imageUrl = post.image;
 
-        const { id } = req.params;
+    const publicId = imageUrl
+        .split("/")
+        .slice(-2)
+        .join("/")
+        .split(".")[0];
 
-        const post = await Post.findById(id);
+    await cloudinary.uploader.destroy(publicId);
 
-        if (!post) {
-            return res.status(404).json({
-                success: false,
-                message: "Post not found"
-            });
-        }
+    await post.deleteOne();
 
-        // Only owner can delete
-        if (post.user.toString() !== req.user._id) {
-            return res.status(403).json({
-                success: false,
-                message: "Unauthorized"
-            });
-        }
+    return res.status(200).json(
+        new ApiResponse(
+            200,
+            null,
+            "Post deleted successfully"
+        )
+    );
 
-        // Delete image from Cloudinary
-        const imageUrl = post.image;
+});
+// =========================
+// Get My Posts
+// =========================
+export const getMyPosts = asyncHandler(async (req, res) => {
 
-        const publicId = imageUrl
-            .split("/")
-            .slice(-2)
-            .join("/")
-            .split(".")[0];
-
-        await cloudinary.uploader.destroy(publicId);
-
-        // Delete post
-        await post.deleteOne();
-
-        return res.status(200).json({
-            success: true,
-            message: "Post deleted successfully"
-        });
-
-    } catch (error) {
-
-        return res.status(500).json({
-            success: false,
-            message: error.message
-        });
-
-    }
-};
-
-export const getMyPosts = async (req, res) => {
-    try {
-
-        const posts = await Post.find({
-            user: req.user._id
-        })
+    const posts = await Post.find({
+        user: req.user._id
+    })
         .populate("user", "name profilePic")
         .sort({ createdAt: -1 });
 
-        return res.status(200).json({
-            success: true,
-            count: posts.length,
-            data: posts
-        });
+    return res.status(200).json(
+        new ApiResponse(
+            200,
+            {
+                count: posts.length,
+                posts
+            },
+            "My posts fetched successfully"
+        )
+    );
 
-    } catch (error) {
+});
 
-        return res.status(500).json({
-            success: false,
-            message: error.message
-        });
+// =========================
+// Like Post
+// =========================
+export const likePost = asyncHandler(async (req, res) => {
 
+    const { id } = req.params;
+
+    if (!mongoose.Types.ObjectId.isValid(id)) {
+        throw new ApiError(400, "Invalid Post ID");
     }
-};
 
-export const likePost = async (req, res) => {
-    try {
+    const post = await Post.findById(id);
 
-        const { id } = req.params;
+    if (!post) {
+        throw new ApiError(404, "Post not found");
+    }
 
-        // Validate ObjectId
-        if (!mongoose.Types.ObjectId.isValid(id)) {
-            return res.status(400).json({
-                success: false,
-                message: "Invalid Post ID"
-            });
-        }
+    const alreadyLiked = post.likes.some(
+        (userId) => userId.toString() === req.user._id.toString()
+    );
 
-        const post = await Post.findById(id);
+    if (alreadyLiked) {
+        throw new ApiError(400, "You already liked this post");
+    }
 
-        if (!post) {
-            return res.status(404).json({
-                success: false,
-                message: "Post not found"
-            });
-        }
+    post.likes.push(req.user._id);
 
-        // Prevent duplicate likes
-        if (post.likes.includes(req.user._id)) {
-            return res.status(400).json({
-                success: false,
-                message: "You already liked this post"
-            });
-        }
+    await post.save();
+
+    // Create notification only if user is not liking own post
+    if (post.user.toString() !== req.user._id.toString()) {
+        await createNotification({
+            sender: req.user._id,
+            receiver: post.user,
+            type: "LIKE",
+            post: post._id
+        });
+    }
+
+    return res.status(200).json(
+        new ApiResponse(
+            200,
+            {
+                totalLikes: post.likes.length,
+                post
+            },
+            "Post liked successfully"
+        )
+    );
+
+});
+
+// =========================
+// Unlike Post
+// =========================
+export const unlikePost = asyncHandler(async (req, res) => {
+
+    const { id } = req.params;
+
+    if (!mongoose.Types.ObjectId.isValid(id)) {
+        throw new ApiError(400, "Invalid Post ID");
+    }
+
+    const post = await Post.findById(id);
+
+    if (!post) {
+        throw new ApiError(404, "Post not found");
+    }
+
+    const alreadyLiked = post.likes.some(
+        (userId) => userId.toString() === req.user._id.toString()
+    );
+
+    if (!alreadyLiked) {
+        throw new ApiError(400, "You have not liked this post");
+    }
+
+    post.likes = post.likes.filter(
+        (userId) => userId.toString() !== req.user._id.toString()
+    );
+
+    await post.save();
+
+    return res.status(200).json(
+        new ApiResponse(
+            200,
+            {
+                totalLikes: post.likes.length,
+                post
+            },
+            "Post unliked successfully"
+        )
+    );
+
+});
+
+// =========================
+// Toggle Like
+// =========================
+export const toggleLike = asyncHandler(async (req, res) => {
+
+    const { id } = req.params;
+
+    if (!mongoose.Types.ObjectId.isValid(id)) {
+        throw new ApiError(400, "Invalid Post ID");
+    }
+
+    const post = await Post.findById(id);
+
+    if (!post) {
+        throw new ApiError(404, "Post not found");
+    }
+
+    const alreadyLiked = post.likes.some(
+        (userId) => userId.toString() === req.user._id.toString()
+    );
+
+    if (!alreadyLiked) {
 
         post.likes.push(req.user._id);
 
         await post.save();
 
-        return res.status(200).json({
-            success: true,
-            message: "Post liked successfully",
-            totalLikes: post.likes.length,
-            data: post
-        });
-
-    } catch (error) {
-
-        return res.status(500).json({
-            success: false,
-            message: error.message
-        });
-
-    }
-};
-
-export const unlikePost = async (req, res) => {
-    try {
-
-        const { id } = req.params;
-
-        // Validate ObjectId
-        if (!mongoose.Types.ObjectId.isValid(id)) {
-            return res.status(400).json({
-                success: false,
-                message: "Invalid Post ID"
-            });
-        }
-
-        const post = await Post.findById(id);
-
-        if (!post) {
-            return res.status(404).json({
-                success: false,
-                message: "Post not found"
-            });
-        }
-
-        // Check if user has liked the post
-        const alreadyLiked = post.likes.some(
-            (userId) => userId.toString() === req.user._id
-        );
-
-        if (!alreadyLiked) {
-            return res.status(400).json({
-                success: false,
-                message: "You have not liked this post"
-            });
-        }
-
-        // Remove like
-        post.likes = post.likes.filter(
-            (userId) => userId.toString() !== req.user._id
-        );
-
-        await post.save();
-
-        return res.status(200).json({
-            success: true,
-            message: "Post unliked successfully",
-            totalLikes: post.likes.length,
-            data: post
-        });
-
-    } catch (error) {
-
-        return res.status(500).json({
-            success: false,
-            message: error.message
-        });
-
-    }
-};
-export const toggleLike = async (req, res) => {
-    try {
-
-        const { id } = req.params;
-
-        // Validate Post ID
-        if (!mongoose.Types.ObjectId.isValid(id)) {
-            return res.status(400).json({
-                success: false,
-                message: "Invalid Post ID"
-            });
-        }
-
-        // Find Post
-        const post = await Post.findById(id);
-
-        if (!post) {
-            return res.status(404).json({
-                success: false,
-                message: "Post not found"
-            });
-        }
-
-        // Check if already liked
-        const alreadyLiked = post.likes.some(
-            (userId) => userId.toString() === req.user._id.toString()
-        );
-
-        if (!alreadyLiked) {
-
-            post.likes.push(req.user._id);
-
-            await post.save();
-
-            // Create notification for post owner
+        if (post.user.toString() !== req.user._id.toString()) {
             await createNotification({
                 sender: req.user._id,
                 receiver: post.user,
                 type: "LIKE",
                 post: post._id
             });
-
-            return res.status(200).json({
-                success: true,
-                action: "liked",
-                message: "Post liked successfully",
-                totalLikes: post.likes.length,
-                data: post
-            });
         }
 
-        post.likes = post.likes.filter(
-            (userId) => userId.toString() !== req.user._id.toString()
+        return res.status(200).json(
+            new ApiResponse(
+                200,
+                {
+                    action: "liked",
+                    totalLikes: post.likes.length,
+                    post
+                },
+                "Post liked successfully"
+            )
         );
 
-        await post.save();
-
-        return res.status(200).json({
-            success: true,
-            action: "unliked",
-            message: "Post unliked successfully",
-            totalLikes: post.likes.length,
-            data: post
-        });
-
-    } catch (error) {
-
-        return res.status(500).json({
-            success: false,
-            message: error.message
-        });
-
     }
-};
+
+    post.likes = post.likes.filter(
+        (userId) => userId.toString() !== req.user._id.toString()
+    );
+
+    await post.save();
+
+    return res.status(200).json(
+        new ApiResponse(
+            200,
+            {
+                action: "unliked",
+                totalLikes: post.likes.length,
+                post
+            },
+            "Post unliked successfully"
+        )
+    );
+
+});

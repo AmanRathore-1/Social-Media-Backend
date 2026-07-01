@@ -1,8 +1,14 @@
 import mongoose from "mongoose";
 import User from "../models/user.model.js";
 import { createNotification } from "../services/notification.service.js";
+import asyncHandler from "../utils/asyncHandler.js";
+import ApiError from "../utils/ApiError.js";
+import ApiResponse from "../utils/ApiResponse.js";
 
-export const followUser = async (req, res) => {
+// =========================
+// Follow User
+// =========================
+export const followUser = asyncHandler(async (req, res) => {
 
     const session = await mongoose.startSession();
 
@@ -13,58 +19,29 @@ export const followUser = async (req, res) => {
         const currentUserId = req.user._id;
         const targetUserId = req.params.id;
 
-        // Validate ObjectId
         if (!mongoose.Types.ObjectId.isValid(targetUserId)) {
-            await session.abortTransaction();
-
-            return res.status(400).json({
-                success: false,
-                message: "Invalid User ID"
-            });
+            throw new ApiError(400, "Invalid User ID");
         }
 
-        // Can't follow yourself
-        if (req.user._id.equals(targetUserId)) {
-            await session.abortTransaction();
-
-            return res.status(400).json({
-                success: false,
-                message: "You cannot follow yourself"
-            });
+        if (currentUserId.toString() === targetUserId.toString()) {
+            throw new ApiError(400, "You cannot follow yourself");
         }
 
-        // Find users
         const currentUser = await User.findById(currentUserId).session(session);
         const targetUser = await User.findById(targetUserId).session(session);
 
         if (!currentUser || !targetUser) {
-
-            await session.abortTransaction();
-
-            return res.status(404).json({
-                success: false,
-                message: "User not found"
-            });
-
+            throw new ApiError(404, "User not found");
         }
 
-        // Already following?
         const alreadyFollowing = currentUser.following.some(
             (id) => id.equals(targetUser._id)
         );
 
         if (alreadyFollowing) {
-
-            await session.abortTransaction();
-
-            return res.status(400).json({
-                success: false,
-                message: "Already following this user"
-            });
-
+            throw new ApiError(400, "Already following this user");
         }
 
-        // Update current user's following list
         await User.findByIdAndUpdate(
             currentUserId,
             {
@@ -75,7 +52,6 @@ export const followUser = async (req, res) => {
             { session }
         );
 
-        // Update target user's followers list
         await User.findByIdAndUpdate(
             targetUserId,
             {
@@ -86,7 +62,6 @@ export const followUser = async (req, res) => {
             { session }
         );
 
-        // Create notification
         await createNotification({
             sender: currentUserId,
             receiver: targetUserId,
@@ -95,19 +70,18 @@ export const followUser = async (req, res) => {
 
         await session.commitTransaction();
 
-        return res.status(200).json({
-            success: true,
-            message: "User followed successfully"
-        });
+        return res.status(200).json(
+            new ApiResponse(
+                200,
+                null,
+                "User followed successfully"
+            )
+        );
 
     } catch (error) {
 
         await session.abortTransaction();
-
-        return res.status(500).json({
-            success: false,
-            message: error.message
-        });
+        throw error;
 
     } finally {
 
@@ -115,8 +89,12 @@ export const followUser = async (req, res) => {
 
     }
 
-};
-export const unfollowUser = async (req, res) => {
+});
+
+// =========================
+// Unfollow User
+// =========================
+export const unfollowUser = asyncHandler(async (req, res) => {
 
     const session = await mongoose.startSession();
 
@@ -128,39 +106,18 @@ export const unfollowUser = async (req, res) => {
         const targetUserId = req.params.id;
 
         if (!mongoose.Types.ObjectId.isValid(targetUserId)) {
-
-            await session.abortTransaction();
-
-            return res.status(400).json({
-                success: false,
-                message: "Invalid User ID"
-            });
-
+            throw new ApiError(400, "Invalid User ID");
         }
 
-        if (req.user._id.equals(targetUserId)) {
-
-            await session.abortTransaction();
-
-            return res.status(400).json({
-                success: false,
-                message: "You cannot unfollow yourself"
-            });
-
+        if (currentUserId.toString() === targetUserId.toString()) {
+            throw new ApiError(400, "You cannot unfollow yourself");
         }
 
         const currentUser = await User.findById(currentUserId).session(session);
         const targetUser = await User.findById(targetUserId).session(session);
 
         if (!currentUser || !targetUser) {
-
-            await session.abortTransaction();
-
-            return res.status(404).json({
-                success: false,
-                message: "User not found"
-            });
-
+            throw new ApiError(404, "User not found");
         }
 
         const isFollowing = currentUser.following.some(
@@ -168,14 +125,7 @@ export const unfollowUser = async (req, res) => {
         );
 
         if (!isFollowing) {
-
-            await session.abortTransaction();
-
-            return res.status(400).json({
-                success: false,
-                message: "You are not following this user"
-            });
-
+            throw new ApiError(400, "You are not following this user");
         }
 
         await User.findByIdAndUpdate(
@@ -200,19 +150,18 @@ export const unfollowUser = async (req, res) => {
 
         await session.commitTransaction();
 
-        return res.status(200).json({
-            success: true,
-            message: "User unfollowed successfully"
-        });
+        return res.status(200).json(
+            new ApiResponse(
+                200,
+                null,
+                "User unfollowed successfully"
+            )
+        );
 
     } catch (error) {
 
         await session.abortTransaction();
-
-        return res.status(500).json({
-            success: false,
-            message: error.message
-        });
+        throw error;
 
     } finally {
 
@@ -220,122 +169,103 @@ export const unfollowUser = async (req, res) => {
 
     }
 
-};
-export const getFollowers = async (req, res) => {
-    try {
+});
+// =========================
+// Get Followers
+// =========================
+export const getFollowers = asyncHandler(async (req, res) => {
 
-        const { id } = req.params;
+    const { id } = req.params;
 
-        // Validate ObjectId
-        if (!mongoose.Types.ObjectId.isValid(id)) {
-            return res.status(400).json({
-                success: false,
-                message: "Invalid User ID"
-            });
-        }
-
-        const user = await User.findById(id)
-            .populate({
-                path: "followers",
-                select: "name email profilePic bio"
-            });
-
-        if (!user) {
-            return res.status(404).json({
-                success: false,
-                message: "User not found"
-            });
-        }
-
-        return res.status(200).json({
-            success: true,
-            count: user.followers.length,
-            data: user.followers
-        });
-
-    } catch (error) {
-
-        return res.status(500).json({
-            success: false,
-            message: error.message
-        });
-
+    if (!mongoose.Types.ObjectId.isValid(id)) {
+        throw new ApiError(400, "Invalid User ID");
     }
-};
 
-export const getFollowing = async (req, res) => {
-    try {
+    const user = await User.findById(id).populate({
+        path: "followers",
+        select: "name email profilePic bio"
+    });
 
-        const { id } = req.params;
-
-        // Validate ObjectId
-        if (!mongoose.Types.ObjectId.isValid(id)) {
-            return res.status(400).json({
-                success: false,
-                message: "Invalid User ID"
-            });
-        }
-
-        const user = await User.findById(id)
-            .populate({
-                path: "following",
-                select: "name username profilePic bio isVerified"
-            });
-
-        if (!user) {
-            return res.status(404).json({
-                success: false,
-                message: "User not found"
-            });
-        }
-
-        return res.status(200).json({
-            success: true,
-            count: user.following.length,
-            data: user.following
-        });
-
-    } catch (error) {
-
-        return res.status(500).json({
-            success: false,
-            message: error.message
-        });
-
+    if (!user) {
+        throw new ApiError(404, "User not found");
     }
-};
 
-export const getSuggestedUsers = async (req, res) => {
-    try {
+    return res.status(200).json(
+        new ApiResponse(
+            200,
+            {
+                count: user.followers.length,
+                followers: user.followers
+            },
+            "Followers fetched successfully"
+        )
+    );
 
-        const currentUser = req.user;
+});
 
-        const excludedUsers = [
-            currentUser._id,
-            ...currentUser.following
-        ];
+// =========================
+// Get Following
+// =========================
+export const getFollowing = asyncHandler(async (req, res) => {
 
-        const suggestions = await User.find({
-            _id: {
-                $nin: excludedUsers
-            }
-        })
+    const { id } = req.params;
+
+    if (!mongoose.Types.ObjectId.isValid(id)) {
+        throw new ApiError(400, "Invalid User ID");
+    }
+
+    const user = await User.findById(id).populate({
+        path: "following",
+        select: "name username profilePic bio isVerified"
+    });
+
+    if (!user) {
+        throw new ApiError(404, "User not found");
+    }
+
+    return res.status(200).json(
+        new ApiResponse(
+            200,
+            {
+                count: user.following.length,
+                following: user.following
+            },
+            "Following fetched successfully"
+        )
+    );
+
+});
+
+// =========================
+// Suggested Users
+// =========================
+export const getSuggestedUsers = asyncHandler(async (req, res) => {
+
+    const currentUser = req.user;
+
+    const excludedUsers = [
+        currentUser._id,
+        ...currentUser.following
+    ];
+
+    const suggestions = await User.find({
+        _id: {
+            $nin: excludedUsers
+        }
+    })
         .select("name username profilePic bio isVerified")
         .limit(10)
         .lean();
 
-        return res.status(200).json({
-            success: true,
-            count: suggestions.length,
-            data: suggestions
-        });
+    return res.status(200).json(
+        new ApiResponse(
+            200,
+            {
+                count: suggestions.length,
+                users: suggestions
+            },
+            "Suggested users fetched successfully"
+        )
+    );
 
-    } catch (error) {
-
-        return res.status(500).json({
-            success: false,
-            message: error.message
-        });
-
-    }
-};
+});
