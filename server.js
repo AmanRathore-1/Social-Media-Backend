@@ -4,18 +4,22 @@ import dotenv from "dotenv";
 import app from "./app.js";
 import { connectDb } from "./src/config/db.js";
 import { initSocket } from "./src/sockets/socket.js";
+
 dotenv.config();
 
 const PORT = process.env.PORT || 3000;
 
 // Create HTTP Server
 const server = http.createServer(app);
+
+// Initialize Socket.IO
 initSocket(server);
+
 try {
     await connectDb();
 
     server.listen(PORT, () => {
-        console.log(`🚀 Server running on http://localhost:${PORT}`);
+        console.log(`🚀 Server running on PORT ${PORT}`);
     });
 
 } catch (error) {
